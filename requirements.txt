@@ -1,0 +1,13 @@
+mlx==0.32.4
+mlx-vlm==0.8.0
+transformers==5.23.0
+huggingface-hub==2.4.0
+xgrammar==0.2.1
+pydantic>=2.13.4,<3
+jsonschema>=4.26.0,<5
+numpy>=2.2.6
+pillow>=12.2.0
+opencv-python-headless>=4.13.0.92
+pypdfium2>=5.14.0
+fastapi>=0.160
+uvicorn>=0.50
