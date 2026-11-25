@@ -16,6 +16,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 MODEL_ID = "mlx-community/clairic-flash-4bit"
+LOG_NAME = "scan-fren.json"
 CONFIDENCE_MIN = 0.5
 PDF_PAGE_LIMIT = 4
 MAX_STEM = 120
@@ -272,6 +273,29 @@ def confident_type(answers: dict) -> bool:
     )
 
 
+def log_path() -> Path:
+    return Path.cwd() / LOG_NAME
+
+
+def load_log() -> list:
+    path = log_path()
+    if not path.exists():
+        return []
+    text = path.read_text()
+    if not text.strip():
+        return []
+    entries = json.loads(text)
+    if not isinstance(entries, list):
+        raise SystemExit(f"{path} is not a JSON array")
+    return entries
+
+
+def append_log(record: dict) -> None:
+    entries = load_log()
+    entries.append(record)
+    log_path().write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n")
+
+
 def allocate(directory: Path, stem: str, suffix: str, original: Path, reserved: set[Path]) -> Path:
     number = 1
     while True:
@@ -283,7 +307,7 @@ def allocate(directory: Path, stem: str, suffix: str, original: Path, reserved: 
         number += 1
 
 
-def classify_file(model, systemone, path: Path, rename: bool, reserved: set[Path]) -> None:
+def classify_file(model, systemone, path: Path, rename: bool, reserved: set[Path]) -> dict:
     print(path, flush=True)
     request = {
         "state": "Classify this scanned document so it can be renamed.",
@@ -309,30 +333,30 @@ def classify_file(model, systemone, path: Path, rename: bool, reserved: set[Path
     if response.get("truncated"):
         print("note: the model truncated the input")
 
+    renamed = None
     stem = filename_stem(answers)
     if stem is None:
         print("left in place: no document type")
-        print()
-        return
-
-    confidence = type_confidence(answers)
-    shown = "missing" if confidence is None else f"{confidence:.2f}"
-    if not confident_type(answers):
-        print(f"-> {stem}{path.suffix.lower()}")
-        print(f"left in place: doc_type confidence {shown} is below {CONFIDENCE_MIN}")
-        print()
-        return
-
-    target = allocate(path.parent, stem, path.suffix.lower(), path, reserved)
-    print(f"-> {target.name}")
-    if not rename:
-        print("dry run")
-    elif target == path:
-        print("unchanged")
     else:
-        path.rename(target)
-        print("renamed")
+        confidence = type_confidence(answers)
+        shown = "missing" if confidence is None else f"{confidence:.2f}"
+        if not confident_type(answers):
+            print(f"-> {stem}{path.suffix.lower()}")
+            print(f"left in place: doc_type confidence {shown} is below {CONFIDENCE_MIN}")
+        else:
+            target = allocate(path.parent, stem, path.suffix.lower(), path, reserved)
+            print(f"-> {target.name}")
+            if not rename:
+                print("dry run")
+            elif target == path:
+                renamed = str(path)
+                print("unchanged")
+            else:
+                path.rename(target)
+                renamed = str(target)
+                print("renamed")
     print()
+    return {"original": str(path), "renamed": renamed, "response": response}
 
 
 def main() -> int:
@@ -346,12 +370,16 @@ def main() -> int:
         help="Files or directories to classify",
     )
     parser.add_argument(
-        "--rename",
+        "--dry-run",
         action="store_true",
-        help="Rename files in place. Without this flag, only print the new names.",
+        help="Print the new names without renaming files.",
     )
     args = parser.parse_args()
     sys.stdout.reconfigure(line_buffering=True)
+    try:
+        load_log()
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"{log_path()}: invalid JSON ({error})") from error
 
     files, errors = collect(args.paths)
     if not files:
@@ -365,7 +393,9 @@ def main() -> int:
         reserved: set[Path] = set()
         for path in files:
             try:
-                classify_file(model, systemone, path, args.rename, reserved)
+                record = classify_file(model, systemone, path, not args.dry_run, reserved)
+                if not args.dry_run:
+                    append_log(record)
             except KeyboardInterrupt:
                 raise
             except Exception as error:
