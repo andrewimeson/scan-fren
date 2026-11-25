@@ -19,19 +19,22 @@ The first classification downloads the model (about 6 GB) into the Hugging Face 
 
 ## Use
 
-Dry run (prints the new name and does not rename):
-
-```bash
-uv run python scan-fren.py ~/Scans
-uv run python scan-fren.py receipt.jpg
-```
-
 Rename in place:
 
 ```bash
-uv run python scan-fren.py --rename ~/Scans
-uv run python scan-fren.py --rename scan.jpg invoice.pdf
+uv run python scan-fren.py ~/Scans
+uv run python scan-fren.py scan.jpg invoice.pdf
 ```
+
+Print the new names without renaming:
+
+```bash
+uv run python scan-fren.py --dry-run ~/Scans
+```
+
+Each rename run appends to `scan-fren.json` in the current directory. A dry run
+does not. An entry holds the original path, the renamed path (`null` when the
+file was not renamed), and the model response.
 
 Names look like `2026-02-20_receipt_harbor-freight.jpg`. A missing date becomes
 `undated`. A file is left alone when the document type is missing or its
